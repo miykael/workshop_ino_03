@@ -6,13 +6,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import tensorflow as tf
 from matplotlib.colors import ListedColormap
 from scipy.cluster.hierarchy import dendrogram
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
-from tensorflow import keras
-from tensorflow.keras import layers
 
 warnings.simplefilter(action="ignore", category=FutureWarning)
 
@@ -125,7 +122,7 @@ def plot_grid_search(param_grid, cv_results):
 
     # Creates a figure with multiple subplot
     fig, axs = plt.subplots(
-        len(param_grid["prep__num__scaler"]), len(param_grid["prep__num__pca"]), figsize=(12, 12), sharex=True
+        len(param_grid["prep__num__scaler"]), len(param_grid["prep__num__pca"]), figsize=(12, 6), sharex=True
     )
 
     # Extract useful information about max performance
@@ -305,57 +302,61 @@ def plot_pca_decomposition(X_data, y_label, n_dim=100):
     plt.show()
 
 
-class VAE(keras.Model):
-    def __init__(self, encoder, decoder, **kwargs):
-        super(VAE, self).__init__(**kwargs)
-        self.encoder = encoder
-        self.decoder = decoder
-        self.total_loss_tracker = keras.metrics.Mean(name="total_loss")
-        self.reconstruction_loss_tracker = keras.metrics.Mean(name="reconstruction_loss")
-        self.kl_loss_tracker = keras.metrics.Mean(name="kl_loss")
-
-    @property
-    def metrics(self):
-        return [
-            self.total_loss_tracker,
-            self.reconstruction_loss_tracker,
-            self.kl_loss_tracker,
-        ]
-
-    def train_step(self, data):
-        with tf.GradientTape() as tape:
-            z_mean, z_log_var, z = self.encoder(data)
-            reconstruction = self.decoder(z)
-            reconstruction_loss = tf.reduce_mean(
-                tf.reduce_sum(keras.losses.binary_crossentropy(data, reconstruction), axis=(1, 2))
-            )
-            kl_loss = -0.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
-            kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
-            total_loss = reconstruction_loss + kl_loss
-        grads = tape.gradient(total_loss, self.trainable_weights)
-        self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
-        self.total_loss_tracker.update_state(total_loss)
-        self.reconstruction_loss_tracker.update_state(reconstruction_loss)
-        self.kl_loss_tracker.update_state(kl_loss)
-        return {
-            "loss": self.total_loss_tracker.result(),
-            "reconstruction_loss": self.reconstruction_loss_tracker.result(),
-            "kl_loss": self.kl_loss_tracker.result(),
-        }
-
-
-class Sampling(layers.Layer):
-    """Uses (z_mean, z_log_var) to sample z, the vector encoding a digit."""
-
-    def call(self, inputs):
-        z_mean, z_log_var = inputs
-        batch = tf.shape(z_mean)[0]
-        dim = tf.shape(z_mean)[1]
-        epsilon = tf.keras.backend.random_normal(shape=(batch, dim))
-        return z_mean + tf.exp(0.5 * z_log_var) * epsilon
-
-
 def get_variational_autoencoder(n_dim=2):
+
+    import tensorflow as tf
+    from tensorflow import keras
+    from tensorflow.keras import layers
+
+    class VAE(keras.Model):
+        def __init__(self, encoder, decoder, **kwargs):
+            super(VAE, self).__init__(**kwargs)
+            self.encoder = encoder
+            self.decoder = decoder
+            self.total_loss_tracker = keras.metrics.Mean(name="total_loss")
+            self.reconstruction_loss_tracker = keras.metrics.Mean(name="reconstruction_loss")
+            self.kl_loss_tracker = keras.metrics.Mean(name="kl_loss")
+
+        @property
+        def metrics(self):
+            return [
+                self.total_loss_tracker,
+                self.reconstruction_loss_tracker,
+                self.kl_loss_tracker,
+            ]
+
+        def train_step(self, data):
+            with tf.GradientTape() as tape:
+                z_mean, z_log_var, z = self.encoder(data)
+                reconstruction = self.decoder(z)
+                reconstruction_loss = tf.reduce_mean(
+                    tf.reduce_sum(keras.losses.binary_crossentropy(data, reconstruction), axis=(1, 2))
+                )
+                kl_loss = -0.5 * (1 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var))
+                kl_loss = tf.reduce_mean(tf.reduce_sum(kl_loss, axis=1))
+                total_loss = reconstruction_loss + kl_loss
+            grads = tape.gradient(total_loss, self.trainable_weights)
+            self.optimizer.apply_gradients(zip(grads, self.trainable_weights))
+            self.total_loss_tracker.update_state(total_loss)
+            self.reconstruction_loss_tracker.update_state(reconstruction_loss)
+            self.kl_loss_tracker.update_state(kl_loss)
+            return {
+                "loss": self.total_loss_tracker.result(),
+                "reconstruction_loss": self.reconstruction_loss_tracker.result(),
+                "kl_loss": self.kl_loss_tracker.result(),
+            }
+
+
+    class Sampling(layers.Layer):
+        """Uses (z_mean, z_log_var) to sample z, the vector encoding a digit."""
+
+        def call(self, inputs):
+            z_mean, z_log_var = inputs
+            batch = tf.shape(z_mean)[0]
+            dim = tf.shape(z_mean)[1]
+            epsilon = tf.keras.backend.random_normal(shape=(batch, dim))
+            return z_mean + tf.exp(0.5 * z_log_var) * epsilon
+
 
     encoder_inputs = keras.Input(shape=(28, 28, 1))
     x = layers.Conv2D(32, 3, activation="relu", strides=2, padding="same")(encoder_inputs)
@@ -431,12 +432,12 @@ def create_synthethic_dataset(n_points_per_cluster=250):
     return X
 
 
-def plot_clustering(X, y, labels, digits, title=""):
+def plot_clustering(X, y, labels, title=""):
     x_min, x_max = np.min(X, axis=0), np.max(X, axis=0)
     X = (X - x_min) / (x_max - x_min)
 
     plt.figure(figsize=(8, 6))
-    for digit in digits.target_names:
+    for digit in range(10):
         if np.all(y == labels):
             c = "gray"
         else:
